@@ -7,6 +7,9 @@
 
 #include <Commander.h>
 #include <ButtonHandler.h>
+#include <Thoroughfare.h>
+#include <SD.h>
+#include <Macrun.h>
 
 // B U T T O N S
 #define SERIAL_BAUD 115200
@@ -15,17 +18,21 @@
 
 ButtonConfig buttonConfig = (ButtonConfig){BUTTON_PINS, BUTTON_MODES};
 ButtonHandler handler(buttonConfig);
+Macrun runner;
 
 // C O M M A N D S
 #define COMMAND_ID "!!"
 #define DEVICE_ID "windy_m1"
 
 Commander commander(Serial, COMMAND_ID, DEVICE_ID);
+Thoroughfare fileparser(Serial);
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
+  SD.begin(10);
   handler.setListener(onEvent);
   commander.attach("version", onVersionCommand);
+  commander.attach("incoming_file", onFileIncoming);
 }
 
 void loop() {
@@ -34,11 +41,16 @@ void loop() {
 }
 
 void onEvent(ButtonEvent event) {
-  Serial.println("Event: button number: " + String(event.number) + "; Event type: " + getEventTypeName(event.pressType));
+  String buttonNumber = String(event.number);
+  runner.execute(buttonNumber);
 }
 
 void onVersionCommand() {
   commander.write(FW_VERSION);
   commander.eot();
+}
+
+void onFileIncoming() {
+  fileparser.initiateParse();
 }
 
