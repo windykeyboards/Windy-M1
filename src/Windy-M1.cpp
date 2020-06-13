@@ -11,7 +11,6 @@
 #include <Thoroughfare.h>
 #include <SD.h>
 #include <Macrun.h>
-#include <Bounce2.h>
 
 // B U T T O N S
 #define SERIAL_BAUD 115200
@@ -19,10 +18,8 @@
 #define BUTTON_MODES {STANDARD, DISCONNECTED, DISCONNECTED, DISCONNECTED, DISCONNECTED, DISCONNECTED}
 
 ButtonConfig buttonConfig = (ButtonConfig){BUTTON_PINS, BUTTON_MODES};
-//ButtonHandler handler(buttonConfig);
+ButtonHandler buttonHandler(buttonConfig);
 Macrun runner;
-
-Bounce debouncer = Bounce(); 
 
 // C O M M A N D S
 #define COMMAND_ID "!!"
@@ -39,28 +36,20 @@ void onFileIncoming();
 void setup() {
   Serial.begin(SERIAL_BAUD);
   SD.begin(10);
-  //handler.setListener(onEvent);
 
-  debouncer.attach(2,INPUT_PULLUP); // Attach the debouncer to a pin with INPUT_PULLUP mode
-  debouncer.interval(25); // Use a debounce interval of 25 milliseconds
-  
+  buttonHandler.start(onEvent);
+
   commander.attach("version", onVersionCommand);
   commander.attach("incoming_file", onFileIncoming);
 }
 
 void loop() {
-  debouncer.update(); // Update the Bounce instance
-   
-  if (debouncer.rose()) { 
-   onEvent((ButtonEvent) {1, BUTTON_PRESS});
-  }
-
+  buttonHandler.onLoop();
   commander.onLoop();
 }
 
 void onEvent(ButtonEvent event) {
   String buttonNumber = String(event.number);
-  Serial.println("Button pressed");
   runner.execute(buttonNumber);
 }
 

@@ -1,86 +1,41 @@
 #include <ButtonHandler.h>
+#include <Bounce2.h>
 
-ButtonHandler * _buttonHandler;
-
-ButtonHandler::ButtonHandler(ButtonConfig config) : _config(config)
-{
-    // Global reference needed for global ISR pointer
-    _buttonHandler = this;
-    InterruptHelper<ButtonConfig::MAX_BUTTONS - 1>::attach(_config);
+ButtonHandler::ButtonHandler(ButtonConfig config) : _config(config) {
+    for (unsigned int i = 0; i < sizeof(config.buttonModes)/sizeof(config.buttonModes[0]); i++) {
+        if (config.buttonModes[i] != ButtonMode::DISCONNECTED) {
+            _activeButtonConfigIndex[_activeButtonCount] = i;
+            _activeButtonCount++;
+        }
+    }
 }
 
 // Setting the callback function used to emit events to
-void ButtonHandler::setListener(EventListener listener) 
+void ButtonHandler::start(EventListener listener) 
 {
     _listener = listener;    
+
+    // Attach debouncers
+    for (int i = 0; i < _activeButtonCount; i++) {
+        _debouncer[i] = Bounce();
+        _debouncer[i].attach(_config.buttonPins[_activeButtonConfigIndex[i]], INPUT_PULLUP);
+        _debouncer[i].interval(25);
+    }
 }
 
 // Loop passthrough to handle event dispatching of queued items
 void ButtonHandler::onLoop()
 {
-    if (!isEventsEmpty()) {
-        _listener(_events[0]);
+    for (int i = 0; i < _activeButtonCount; i++) {
+        _debouncer[i].update();
 
-        ATOMIC(
-            resizeEvents();
-        )
+        if (_debouncer[i].rose()) {
+            // Button down, press
+            _listener((ButtonEvent){ /* one-indexed buttons */ i + 1, BUTTON_PRESS });
+        }
+
+        if (_debouncer[i].fell()) {
+            // Button up - TODO: Handle this for modifiers
+        }
     }
 }
-
-// Returns whether or not the event queue is empty
-boolean ButtonHandler::isEventsEmpty() 
-{
-    return _lastIndex == 0;
-}
-
-// Shifts event array down an indices such that index 1 -> index 0 etc.
-void ButtonHandler::resizeEvents() 
-{
-    for (int i = 0; i < _lastIndex; i++) {
-        _events[i] = _events[i+1];
-    }
-
-    _lastIndex--;
-}
-
-// Adds event to the queue if there is room in the queue.
-// If the consumer of the library is not processing an event, and the 
-// events queue is empty then simply emit the event, and queue others
-void ButtonHandler::addEvent(ButtonEvent event) {
-    if (_lastIndex < EVENT_BUFFER_LENGTH) {
-        // Add event to buffer and increment last index
-        _events[_lastIndex] = event;            
-        _lastIndex++;
-    }
-}
-
-// Handles button press event. Simply adds event to queue
-void ButtonHandler::onPress(int number) 
-{
-    if (_buttonTimeout[number-1] > NORMAL_DEBOUNCE_INTERVAL_MILLIS) {
-        ATOMIC(
-            addEvent((ButtonEvent) {number, BUTTON_PRESS});
-        )
-
-        Serial.println("Button pressed");
-
-        _buttonTimeout[number-1] = 0;
-    }
-}
-
-// Handles modifier event. Determines if the modifier has been pressed or released, then 
-// adds the event to the queue
-void ButtonHandler::onModifier(int number)
-{
-     if (_buttonTimeout[number-1] > MODIFIER_DEBOUNCE_INTERVAL_MILLIS) {
-        ATOMIC(
-            delay(1); // Delay is required to allow an accurate pin read
-            _modifierActive = digitalRead(_config.buttonPins[number-1]);
-
-            addEvent((ButtonEvent) {number, _modifierActive ? BUTTON_DOWN : BUTTON_UP});
-        )
-
-        _buttonTimeout[number-1] = 0;
-    }
-}
-
