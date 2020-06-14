@@ -1,9 +1,7 @@
 #include <Macrun.h>
-#include <SD.h>
 
 Macrun::Macrun(const String macroDir): macroDir(macroDir)
 {
-    reset();
 }
 
 void Macrun::execute(String name)
@@ -19,95 +17,33 @@ void Macrun::execute(String name)
         return;
     }
 
-    Serial.println("Reading and dispatching: " + filename);
-
     File macro = SD.open(fname);
+
+    // Reinterpret File stream as correct Protobuf type
+    pb_istream_s pb_in = as_pb_istream(macro);
+
+    windy_keyboards_Macro pb_macro = windy_keyboards_Macro_init_zero;
+    pb_macro.micros.funcs.decode = decode_micro;
     
-    while (macro.available())
-    {
-        size_t bytesAvailable = min(macro.available(), READBUFFERSIZE);
-		macro.read(readBuffer, bytesAvailable);
+    pb_decode(&pb_in, windy_keyboards_Macro_fields, &pb_macro);
+}
 
-        // Pass the butter
-        for (size_t byteNo = 0; byteNo < bytesAvailable; byteNo++)
-		{
-            if (skipline && readBuffer[byteNo] == '\n') {
-                skipline = false;
-                continue;
-            } else if (skipline) {
-                continue;
-            }
-
-            if (IS_MAC_CTRL_CHAR(readBuffer[byteNo])) {
-                // Command type or comma
-                if (readBuffer[byteNo] != ',') {
-                    typeId = readBuffer[byteNo];
-                }
-            } else {
-                // Terminal case - last character in file
-                // TODO - Fix multiple of 512 char issue
-                if (byteNo == (bytesAvailable - 1) && bytesAvailable < READBUFFERSIZE) {
-                    if (readBuffer[byteNo] != '\n') {
-                        macroBuffer[macroBufferIndex] = readBuffer[byteNo];
-                        macroBufferIndex++;
-                    }
-                    dispatchPending();
-                    return;
-                }
-
-                // Read to macroBuffer, hex, dispatch
-                if (readBuffer[byteNo] == '\n') {
-                    dispatchPending();
-                } else if (isxdigit(readBuffer[byteNo])) {
-                    if (macroBufferIndex == MACROBUFFERSIZE) {
-                        // We should be at the end. Skip the line
-                        skipline = true;
-                        macroBufferIndex = 0;
-                    }
-
-                    macroBuffer[macroBufferIndex] = readBuffer[byteNo];
-                    macroBufferIndex++;
-                }
-            }
-        }
+// Function for decoding and handling a micro
+bool decode_micro(pb_istream_t *stream, const pb_field_t *field, void **arg) {
+    windy_keyboards_Micro pb_micro = windy_keyboards_Micro_init_zero;
+    pb_decode(stream, windy_keyboards_Micro_fields, &pb_micro);
+    
+    switch (pb_micro.which_action) {
+        case windy_keyboards_Micro_delay_tag:
+            delay(pb_micro.action.delay);
+            break;
+        case windy_keyboards_Micro_press_tag:
+            Keyboard.press(pb_micro.action.press);
+            break;
+        case windy_keyboards_Micro_release_tag:
+            Keyboard.release(pb_micro.action.release);
+            break;   
     }
 
-    
-    Serial.println("No dispatch to be seen, buffer: " + String(readBuffer));
-
-    reset();
-}
-
-void Macrun::dispatchPending() {
-    macroBuffer[macroBufferIndex] = '\0';
-    uint16_t macro = strtol(macroBuffer, NULL, 16);
-    
-    Serial.println("Dispatching type: " + String(typeId) + " mac: " + String(macro));
-
-    switch (typeId) {
-        case 'p':
-            press(macro);
-            break;
-        case 'r':
-            release(macro);
-            break;
-        case 't':
-            delay(macro);
-            break;
-    }
-
-    macroBufferIndex = 0;
-}
-
-void Macrun::reset() {
-    readBufferIndex = 0;
-    macroBufferIndex = 0;
-}
-
-void Macrun::press(uint16_t macro) {
-    Keyboard.press(macro);
-}
-
-void Macrun::release(uint16_t macro) {
-    Keyboard.release(macro);
+    return true;
 }
