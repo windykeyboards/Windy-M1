@@ -4,10 +4,12 @@
 #include <ctype.h>
 #include "Arduino.h"
 #include <stdlib.h>
+#include <pb_decode.h>
+#include <SD.h>
+#include <Macro.pb.h>
+#include <pb_arduino.h>
 
-#define READBUFFERSIZE 512
-#define MACROBUFFERSIZE 7
-#define IS_MAC_CTRL_CHAR(c) (c == 't' || c == 'p' || c == 'r' || c == ',')
+bool decode_micro(pb_istream_t *stream, const pb_field_t *field, void **arg);
 
 class Macrun
 {
@@ -15,20 +17,8 @@ class Macrun
         Macrun(const String macroDir = "macro");
 
         void execute(String macroName);
+
     private:
         String macroDir;
-        bool skipline;
-
-        char typeId;
-        uint8_t readBufferIndex;
-        uint8_t macroBufferIndex;
-        
-        char readBuffer[READBUFFERSIZE];
-        char macroBuffer[MACROBUFFERSIZE + 1];
-
-        void press(uint16_t macro);
-        void release(uint16_t macro);
-        void dispatchPending();
-        void reset();
 };
 #endif

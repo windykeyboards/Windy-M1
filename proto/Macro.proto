@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package windy.keyboards;
+
+message Macro {
+  repeated Micro micros = 1;
+}
+
+message Micro {
+  oneof action {
+    int32 delay = 1;
+    int32 press = 2;
+    int32 release = 3;
+  }
+}
